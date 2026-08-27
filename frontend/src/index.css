@@ -1,0 +1,30 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #090b10; color: #f4f5f7; }
+button { cursor: pointer; border: 0; border-radius: 10px; padding: 10px 15px; background: #f4f5f7; color: #090b10; font-weight: 700; }
+.app { min-height: 100vh; display: flex; }
+.sidebar { width: 240px; padding: 24px 16px; border-right: 1px solid #20242d; background: #0d1016; }
+.brand { font-size: 21px; font-weight: 800; margin: 5px 10px 30px; }
+nav { display: grid; gap: 6px; }
+nav a { padding: 11px 12px; color: #9299a8; border-radius: 9px; }
+nav a.active, nav a:hover { background: #181c24; color: #fff; }
+.main { flex: 1; max-width: 1300px; margin: auto; padding: 32px; }
+.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+.eyebrow { color: #777f90; font-size: 11px; letter-spacing: 2px; margin: 0 0 6px; }
+h1, h2, h3, p { margin-top: 0; }
+h1 { margin-bottom: 0; }
+.badge, .status { padding: 7px 10px; border-radius: 999px; background: #171b22; color: #b9c0cd; font-size: 12px; }
+.cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 24px; }
+.card, .panel { background: #0f131a; border: 1px solid #20242d; border-radius: 14px; }
+.card { padding: 20px; }
+.card span { display: block; color: #7f8797; font-size: 13px; margin-bottom: 12px; }
+.card strong { font-size: 25px; }
+.panel { padding: 22px; }
+.panel-title { display: flex; justify-content: space-between; align-items: center; }
+.panel-title h2 { margin: 0; }
+.empty { padding: 45px 10px; color: #7f8797; text-align: center; }
+.server-list { display: grid; gap: 10px; margin-top: 18px; }
+.server { display: flex; justify-content: space-between; align-items: center; padding: 17px; border: 1px solid #20242d; border-radius: 11px; }
+.server h3 { margin-bottom: 5px; }
+.server p { margin: 0; color: #7f8797; font-size: 13px; }
+.status.online { color: #a8e6b2; }
+@media (max-width: 800px) { .sidebar { display: none; } .main { padding: 20px; } .cards { grid-template-columns: repeat(2, 1fr); } }
