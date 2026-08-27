@@ -8,21 +8,35 @@ type Server = {
   memory: number;
   disk: number;
   cpu: number;
+  node?: { id: string; name: string; status: string };
 };
+
+type Node = { id: string; name: string; status: string };
 
 export default function App() {
   const [servers, setServers] = useState<Server[]>([]);
+  const [nodes, setNodes] = useState<Node[]>([]);
   const [apiStatus, setApiStatus] = useState("Checking...");
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    api("/api/health")
-      .then(() => setApiStatus("Online"))
-      .catch(() => setApiStatus("Offline"));
+  async function load() {
+    setError("");
+    try {
+      await api("/api/health");
+      setApiStatus("Online");
+      const [serverData, nodeData] = await Promise.all([
+        api("/api/servers"),
+        api("/api/nodes"),
+      ]);
+      setServers(serverData.servers ?? []);
+      setNodes(nodeData.nodes ?? []);
+    } catch (err) {
+      setApiStatus("Offline");
+      setError(err instanceof Error ? err.message : "Unable to connect to the API");
+    }
+  }
 
-    api("/api/servers")
-      .then((data) => setServers(data.servers ?? []))
-      .catch(() => setServers([]));
-  }, []);
+  useEffect(() => { void load(); }, []);
 
   return (
     <div className="app">
@@ -43,24 +57,32 @@ export default function App() {
             <p className="eyebrow">CONTROL PANEL</p>
             <h1>Dashboard</h1>
           </div>
-          <span className="badge">API: {apiStatus}</span>
+          <div className="top-actions">
+            <span className="badge">API: {apiStatus}</span>
+            <button onClick={() => void load()}>Refresh</button>
+          </div>
         </header>
+
+        {error && <div className="alert">{error}</div>}
 
         <section className="cards">
           <div className="card"><span>Servers</span><strong>{servers.length}</strong></div>
-          <div className="card"><span>Online</span><strong>{servers.filter(s => s.status === "online").length}</strong></div>
-          <div className="card"><span>Nodes</span><strong>0</strong></div>
-          <div className="card"><span>Plan</span><strong>V1</strong></div>
+          <div className="card"><span>Online</span><strong>{servers.filter(s => s.status === "ONLINE").length}</strong></div>
+          <div className="card"><span>Nodes</span><strong>{nodes.length}</strong></div>
+          <div className="card"><span>Online Nodes</span><strong>{nodes.filter(n => n.status === "online").length}</strong></div>
         </section>
 
         <section className="panel">
           <div className="panel-title">
             <h2>My Servers</h2>
-            <button>Create Server</button>
+            <button disabled title="Server creation is coming in the next V1 phase">Create Server</button>
           </div>
 
           {servers.length === 0 ? (
-            <div className="empty">No servers yet. Your first server will appear here.</div>
+            <div className="empty">
+              <strong>No servers yet</strong>
+              <p>Add a node and create your first Minecraft server in the next V1 phase.</p>
+            </div>
           ) : (
             <div className="server-list">
               {servers.map((server) => (
@@ -68,8 +90,9 @@ export default function App() {
                   <div>
                     <h3>{server.name}</h3>
                     <p>{server.memory} MB RAM · {server.disk} GB Disk · {server.cpu}% CPU</p>
+                    <small>{server.node?.name ?? "No node"}</small>
                   </div>
-                  <span className={`status ${server.status}`}>{server.status}</span>
+                  <span className={`status ${server.status.toLowerCase()}`}>{server.status}</span>
                 </div>
               ))}
             </div>
