@@ -1,12 +1,15 @@
 {
   "name": "billorecloud-frontend",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
     "react": "^19.0.0",
