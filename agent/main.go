@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 )
 
 type Health struct {
@@ -19,12 +20,17 @@ func health(w http.ResponseWriter, _ *http.Request) {
 		Success: true,
 		Agent:   "BilloreCloud Node Agent",
 		Status:  "online",
-		Version: "1.0.0",
+		Version: "1.0.1",
 	})
 }
 
 func main() {
+	port := os.Getenv("AGENT_PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	http.HandleFunc("/health", health)
-	log.Println("BilloreCloud Agent running on http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Printf("BilloreCloud Agent running on http://0.0.0.0:%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
