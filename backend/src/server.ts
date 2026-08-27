@@ -5,22 +5,128 @@ import { PrismaClient, ServerStatus } from "@prisma/client";
 
 const prisma = new PrismaClient();
 const app = express();
+
 app.disable("x-powered-by");
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "1mb" }));
 
-app.get("/", (_req, res) => res.json({ name: "BilloreCloud API", version: "1.1.0", status: "online" }));
-app.get("/api/health", (_req, res) => res.json({ success: true, message: "BilloreCloud API is running", version: "1.1.0", uptime: Math.round(process.uptime()) }));
-app.get("/api/health/db", async (_req, res) => { try { await prisma.$queryRaw`SELECT 1`; res.json({ success: true, database: "online" }); } catch { res.status(503).json({ success: false, database: "offline" }); } });
+app.get("/", (_req, res) => {
+  res.json({ name: "BilloreCloud API", version: "1.0.3", status: "online" });
+});
 
-app.get("/api/nodes", async (_req, res, next) => { try { const nodes = await prisma.node.findMany({ select: { id:true,name:true,host:true,port:true,status:true }, orderBy:{createdAt:"desc"} }); res.json({success:true,nodes}); } catch(e){next(e)} });
-app.post("/api/nodes", async (req,res,next)=>{ try { const name=typeof req.body?.name==="string"?req.body.name.trim():""; const host=typeof req.body?.host==="string"?req.body.host.trim():""; const port=Number(req.body?.port??8080); const token=typeof req.body?.token==="string"?req.body.token.trim():""; if(!name||!host||!token||!Number.isInteger(port)||port<1||port>65535)return res.status(400).json({success:false,message:"name, host, port and token are required"}); const node=await prisma.node.create({data:{name,host,port,token,status:"offline"},select:{id:true,name:true,host:true,port:true,status:true}}); res.status(201).json({success:true,node,message:"Node added"}); }catch(e){next(e)} });
-app.post("/api/nodes/:id/ping", async(req,res,next)=>{try{const node=await prisma.node.findUnique({where:{id:req.params.id}});if(!node)return res.status(404).json({success:false,message:"Node not found"});const r=await fetch(`http://${node.host}:${node.port}/health`,{headers:{Authorization:`Bearer ${node.token??""}`},signal:AbortSignal.timeout(5000)});const data=await r.json().catch(()=>({}));const status=r.ok&&data?.success?"online":"offline";await prisma.node.update({where:{id:node.id},data:{status}});res.status(r.ok?200:502).json({success:r.ok,nodeStatus:status,agent:data})}catch(e){next(e)}});
+app.get("/api/health", (_req, res) => {
+  res.json({ success: true, message: "BilloreCloud API is running", version: "1.0.3", uptime: Math.round(process.uptime()) });
+});
 
-app.get("/api/servers", async (_req,res,next)=>{try{const servers=await prisma.server.findMany({select:{id:true,name:true,status:true,memory:true,disk:true,cpu:true,version:true,containerId:true,node:{select:{id:true,name:true,status:true}},allocation:{select:{ip:true,port:true}}},orderBy:{createdAt:"desc"}});res.json({success:true,servers})}catch(e){next(e)}});
-app.post("/api/servers", async(req,res,next)=>{try{const name=typeof req.body?.name==="string"?req.body.name.trim():"";const nodeId=typeof req.body?.nodeId==="string"?req.body.nodeId:"";const memory=Number(req.body?.memory??2048),disk=Number(req.body?.disk??10),cpu=Number(req.body?.cpu??100);const version=typeof req.body?.version==="string"&&/^[A-Za-z0-9._-]{1,30}$/.test(req.body.version)?req.body.version:"LATEST";if(!name||!nodeId)return res.status(400).json({success:false,message:"name and nodeId are required"});if(![memory,disk,cpu].every(Number.isFinite)||memory<512||disk<1||cpu<1)return res.status(400).json({success:false,message:"Invalid resource values"});const node=await prisma.node.findUnique({where:{id:nodeId}});if(!node)return res.status(404).json({success:false,message:"Node not found"});const owner=await prisma.user.upsert({where:{email:"demo@billorecloud.local"},update:{},create:{name:"BilloreCloud Demo",email:"demo@billorecloud.local",passwordHash:"disabled-demo-account"}});const server=await prisma.server.create({data:{name,ownerId:owner.id,nodeId,memory:Math.round(memory),disk:Math.round(disk),cpu:Math.round(cpu),version,status:ServerStatus.INSTALLING}});try{const r=await fetch(`http://${node.host}:${node.port}/servers`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${node.token??""}`},body:JSON.stringify({serverId:server.id,name,memory:Math.round(memory),disk:Math.round(disk),cpu:Math.round(cpu),version}),signal:AbortSignal.timeout(15000)});const data=await r.json().catch(()=>({}));if(!r.ok||!data?.success){await prisma.server.update({where:{id:server.id},data:{status:ServerStatus.ERROR}});return res.status(502).json({success:false,message:data?.message||"Node agent failed to create Minecraft server"})}const updated=await prisma.server.update({where:{id:server.id},data:{containerId:data.containerId??null,status:ServerStatus.OFFLINE},include:{node:{select:{id:true,name:true,status:true}}});return res.status(201).json({success:true,server:updated,message:"Minecraft server created"})}catch{await prisma.server.update({where:{id:server.id},data:{status:ServerStatus.ERROR}});return res.status(502).json({success:false,message:"Could not reach node agent"})}}catch(e){next(e)}});
-app.post("/api/servers/:id/:action",async(req,res,next)=>{try{const allowed=["start","stop","restart","status"];if(!allowed.includes(req.params.action))return res.status(400).json({success:false,message:"Invalid action"});const server=await prisma.server.findUnique({where:{id:req.params.id},include:{node:true}});if(!server)return res.status(404).json({success:false,message:"Server not found"});const r=await fetch(`http://${server.node.host}:${server.node.port}/servers/${server.id}/${req.params.action}`,{method:"POST",headers:{Authorization:`Bearer ${server.node.token??""}`},signal:AbortSignal.timeout(10000)});const data=await r.json().catch(()=>({}));if(!r.ok)return res.status(502).json({success:false,message:data?.message||"Node agent request failed"});if(data.status)await prisma.server.update({where:{id:server.id},data:{status:String(data.status).toUpperCase() as ServerStatus}});res.json({success:true,...data})}catch(e){next(e)}});
+app.get("/api/health/db", async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ success: true, database: "online" });
+  } catch {
+    res.status(503).json({ success: false, database: "offline", message: "Database connection failed" });
+  }
+});
 
-app.use((_req,res)=>res.status(404).json({success:false,message:"Route not found"}));
-app.use((error:unknown,_req:Request,res:Response,_next:NextFunction)=>{console.error(error);res.status(500).json({success:false,message:"Internal server error"})});
-const port=Number(process.env.PORT||3000);const server=app.listen(port,"0.0.0.0",()=>console.log(`BilloreCloud API running on http://0.0.0.0:${port}`));async function shutdown(){server.close();await prisma.$disconnect();process.exit(0)}process.on("SIGINT",shutdown);process.on("SIGTERM",shutdown);
+app.get("/api/servers", async (_req, res, next) => {
+  try {
+    const servers = await prisma.server.findMany({
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        memory: true,
+        disk: true,
+        cpu: true,
+        node: { select: { id: true, name: true, status: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json({ success: true, servers });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/nodes", async (_req, res, next) => {
+  try {
+    const nodes = await prisma.node.findMany({
+      select: { id: true, name: true, host: true, port: true, status: true },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json({ success: true, nodes });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/servers", async (req, res, next) => {
+  try {
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    const nodeId = typeof req.body?.nodeId === "string" ? req.body.nodeId : "";
+    const memory = Number(req.body?.memory ?? 2048);
+    const disk = Number(req.body?.disk ?? 10);
+    const cpu = Number(req.body?.cpu ?? 100);
+
+    if (!name || !nodeId) return res.status(400).json({ success: false, message: "name and nodeId are required" });
+    if (![memory, disk, cpu].every(Number.isFinite) || memory < 128 || disk < 1 || cpu < 1) {
+      return res.status(400).json({ success: false, message: "Invalid resource values" });
+    }
+
+    const node = await prisma.node.findUnique({ where: { id: nodeId } });
+    if (!node) return res.status(404).json({ success: false, message: "Node not found" });
+
+    const owner = await prisma.user.upsert({
+      where: { email: "demo@billorecloud.local" },
+      update: {},
+      create: { name: "BilloreCloud Demo", email: "demo@billorecloud.local", passwordHash: "disabled-demo-account" },
+    });
+
+    const server = await prisma.server.create({
+      data: {
+        name,
+        ownerId: owner.id,
+        nodeId: node.id,
+        memory: Math.round(memory),
+        disk: Math.round(disk),
+        cpu: Math.round(cpu),
+        status: ServerStatus.OFFLINE,
+      },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        memory: true,
+        disk: true,
+        cpu: true,
+        node: { select: { id: true, name: true, status: true } },
+      },
+    });
+
+    return res.status(201).json({ success: true, server, message: "Server created in panel" });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.use((_req, res) => {
+  res.status(404).json({ success: false, message: "Route not found" });
+});
+
+app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  console.error(error);
+  res.status(500).json({ success: false, message: "Internal server error" });
+});
+
+const port = Number(process.env.PORT || 3000);
+const server = app.listen(port, "0.0.0.0", () => {
+  console.log(`BilloreCloud API running on http://0.0.0.0:${port}`);
+});
+
+async function shutdown() {
+  server.close();
+  await prisma.$disconnect();
+  process.exit(0);
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
